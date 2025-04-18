@@ -34,11 +34,9 @@ export const TicketCanvas = forwardRef<HTMLCanvasElement, TicketCanvasProps>(fun
 
       try {
         setIsGeneratingQR(true)
-        // Create a unique attendee code based on ticket details
-        const attendeeCode = `${ticket.name}-${ticket.show}-${ticket.dateTime}-${ticket.section}-${ticket.row}-${ticket.seat}`
 
         const qrDataUrl = await generateQRCode({
-          data: attendeeCode,
+          data: ticket.attendeeCode,
           width: 477,
           height: 477,
           dotsOptions: {
@@ -93,7 +91,7 @@ export const TicketCanvas = forwardRef<HTMLCanvasElement, TicketCanvasProps>(fun
       const showAbbrev = getShowAbbreviation(ticket.show)
       const titleImage = new Image()
       titleImage.crossOrigin = "anonymous"
-      titleImage.src = `/title-images/${showAbbrev}.png`
+      titleImage.src = `/title-images/${ticket.abbrev}.png`
 
       titleImage.onload = () => {
         // Draw title image at specified coordinates (59, 45)
@@ -187,7 +185,7 @@ export const TicketCanvas = forwardRef<HTMLCanvasElement, TicketCanvasProps>(fun
         // Fallback if title image fails to load
         console.warn(`Title image for ${showAbbrev} not found, using text fallback`)
         ctx.fillStyle = "#000000"
-        ctx.font = "bold 28px HankenGrotesk"
+        ctx.font = "bold 70px HankenGrotesk"
         ctx.textAlign = "left"
         ctx.fillText(ticket.show, 59, 80)
 
@@ -209,28 +207,28 @@ export const TicketCanvas = forwardRef<HTMLCanvasElement, TicketCanvasProps>(fun
     ctx.fillStyle = "#000000"
     ctx.font = "500 32px HankenGrotesk"
     ctx.textAlign = "left"
-    ctx.fillText(ticket.dateTime, 59, 130, 700)
+    ctx.fillText(ticket.dateTime, 59, 150, 700)
 
     // Draw attendee name
     ctx.fillStyle = "#FFFFFF"
     ctx.font = "600 42px HankenGrotesk"
     ctx.textAlign = "center"
-    ctx.fillText(ticket.name, 372, 265, 570)
+    ctx.fillText(ticket.name, 372, 307, 570)
 
     // Draw section, row, seat
     ctx.fillStyle = "#000000"
     ctx.font = "500 70px HankenGrotesk"
     ctx.textAlign = "center"
-    ctx.fillText(ticket.section, 187, 420)
-    ctx.fillText(ticket.row, 402, 420)
-    ctx.fillText(ticket.seat, 589, 420)
+    ctx.fillText(ticket.section, 187, 490)
+    ctx.fillText(ticket.row, 402, 490)
+    ctx.fillText(ticket.seat, 589, 490)
 
     // Special note for subscribers with GA section
     if (ticket.isSubscriber && ticket.section === "GA") {
       ctx.fillStyle = "#000000"
       ctx.font = "500 25px HankenGrotesk"
       ctx.textAlign = "left"
-      ctx.fillText("See board member for seat preference selection", 59, 537)
+      ctx.fillText("See board member for seat preference selection", 59, 562)
     }
 
     // Draw white circle for non-subscribers

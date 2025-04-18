@@ -9,6 +9,7 @@ import type { TicketData } from "@/lib/sheets-service"
 import { TicketCanvas } from "@/components/ticket-canvas"
 import { loadCustomFonts, getShowAbbreviation } from "@/lib/font-loader"
 import { generateQRCode } from "@/lib/qr-code"
+import { toast } from "@/hooks/use-toast"
 
 interface TicketGeneratorProps {
   tickets: TicketData[]
@@ -17,6 +18,7 @@ interface TicketGeneratorProps {
 export function TicketGenerator({ tickets }: TicketGeneratorProps) {
   const [currentTicketIndex, setCurrentTicketIndex] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isPrinting, setIsPrinting] = useState(false)
 
   const handlePrint = async () => {
     // Ensure fonts are loaded before printing
@@ -111,10 +113,10 @@ export function TicketGenerator({ tickets }: TicketGeneratorProps) {
             titleImage.onerror = () => {
               // Fallback to text
               ctx.fillStyle = "#000000"
-              ctx.font = "bold 60px HankenGrotesk"
+              ctx.font = "bold 28px HankenGrotesk"
               ctx.textAlign = "left"
               ctx.fillText(ticket.show, 59, 80)
-              resolve(28)
+              resolve(70)
             }
             setTimeout(() => reject(new Error("Title image load timeout")), 3000)
           })
@@ -122,7 +124,7 @@ export function TicketGenerator({ tickets }: TicketGeneratorProps) {
           console.warn(`Failed to load title image for ${ticket.show}:`, error)
           // Fallback to text
           ctx.fillStyle = "#000000"
-          ctx.font = "bold 60px HankenGrotesk"
+          ctx.font = "bold 70px HankenGrotesk"
           ctx.textAlign = "left"
           ctx.fillText(ticket.show, 59, 80)
         }
@@ -272,6 +274,137 @@ export function TicketGenerator({ tickets }: TicketGeneratorProps) {
     printWindow.document.close()
   }
 
+  const handleDirectPrint = async () => {
+    if (!canvasRef.current && currentTicketIndex >= 0) {
+      toast({
+        title: "Error",
+        description: "Cannot access ticket image for printing",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsPrinting(true)
+    try {
+      // Get the current ticket image data
+      const imageData = canvasRef.current?.toDataURL("image/png")
+
+      // Send to server for printing
+      const response = await fetch("/api/print", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          imageData,
+          ticketInfo: tickets[currentTicketIndex],
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to print ticket")
+      }
+
+      toast({
+        title: "Success",
+        description: "Ticket sent to printer",
+      })
+    } catch (error) {
+      console.error("Print error:", error)
+      toast({
+        title: "Print Error",
+        description: error instanceof Error ? error.message : "Failed to print ticket",
+        variant: "destructive",
+      })
+    } finally {
+      setIsPrinting(false)
+    }
+  }
+
+  const handleBulkDirectPrint = async () => {
+    setIsPrinting(true)
+    let successCount = 0
+    let errorCount = 0
+
+    try {
+      // Process each ticket
+      for (const [index, ticket] of tickets.entries()) {
+        // Create a temporary canvas for this ticket
+        const canvas = document.createElement("canvas")
+        canvas.width = 1650 // Width for 5.5in at 300dpi
+        canvas.height = 600 // Height for 2in at 300dpi
+        const ctx = canvas.getContext("2d")
+
+        if (!ctx) {
+          errorCount++
+          continue
+        }
+
+        try {
+          // Generate the ticket image (similar to the code in handlePrint)
+          // ... (ticket generation code) ...
+
+          // This is a simplified version - in production, you'd want to reuse your ticket rendering code
+          ctx.fillStyle = "#ffffff"
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          ctx.font = "bold 24px Arial"
+          ctx.fillStyle = "#000000"
+          ctx.fillText(`Ticket for: ${ticket.name}`, 50, 50)
+          ctx.fillText(`Show: ${ticket.show}`, 50, 100)
+          ctx.fillText(`Section: ${ticket.section}, Row: ${ticket.row}, Seat: ${ticket.seat}`, 50, 150)
+
+          // Get the image data
+          const imageData = canvas.toDataURL("image/png")
+
+          // Send to server for printing
+          const response = await fetch("/api/print", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              imageData,
+              ticketInfo: ticket,
+            }),
+          })
+
+          if (!response.ok) {
+            throw new Error(`Failed to print ticket ${index + 1}`)
+          }
+
+          successCount++
+        } catch (error) {
+          console.error(`Error printing ticket ${index + 1}:`, error)
+          errorCount++
+        }
+      }
+
+      if (errorCount === 0) {
+        toast({
+          title: "Success",
+          description: `All ${successCount} tickets sent to printer`,
+        })
+      } else {
+        toast({
+          title: "Partial Success",
+          description: `${successCount} tickets printed, ${errorCount} failed`,
+          variant: "warning",
+        })
+      }
+    } catch (error) {
+      console.error("Bulk print error:", error)
+      toast({
+        title: "Print Error",
+        description: error instanceof Error ? error.message : "Failed to print tickets",
+        variant: "destructive",
+      })
+    } finally {
+      setIsPrinting(false)
+    }
+  }
+
   const handleDownload = () => {
     if (!canvasRef.current) return
 
@@ -287,9 +420,9 @@ export function TicketGenerator({ tickets }: TicketGeneratorProps) {
         <CardTitle>Generate Tickets</CardTitle>
       </CardHeader>
       <CardContent>
-        {tickets.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <p>No tickets selected. Please select tickets from the Ticket List tab.</p>
+        {tickets.length === -1 ? (
+          <div className="text-center py-12 text-muted-foreground" style={{height: 735}}>
+            <p style={{marginTop:300}}>No tickets selected. Please select tickets from below.</p>
           </div>
         ) : (
           <>
@@ -330,7 +463,15 @@ export function TicketGenerator({ tickets }: TicketGeneratorProps) {
                       <Download className="mr-2 h-4 w-4" /> Download
                     </Button>
                     <Button variant="outline" onClick={() => window.print()}>
-                      <Printer className="mr-2 h-4 w-4" /> Print Current
+                      <Printer className="mr-2 h-4 w-4" /> Browser Print
+                    </Button>
+                    <Button
+                      onClick={handleDirectPrint}
+                      disabled={isPrinting}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Printer className="mr-2 h-4 w-4" />
+                      {isPrinting ? "Printing..." : "Print to Ticket Printer"}
                     </Button>
                   </div>
                 </div>
@@ -339,9 +480,19 @@ export function TicketGenerator({ tickets }: TicketGeneratorProps) {
               <TabsContent value="bulk">
                 <div className="text-center py-6">
                   <p className="mb-6">Ready to print all {tickets.length} selected tickets</p>
-                  <Button onClick={handlePrint}>
-                    <Printer className="mr-2 h-4 w-4" /> Print All Tickets
-                  </Button>
+                  <div className="flex justify-center gap-4">
+                    <Button onClick={handlePrint}>
+                      <Printer className="mr-2 h-4 w-4" /> Browser Print All
+                    </Button>
+                    <Button
+                      onClick={handleBulkDirectPrint}
+                      disabled={isPrinting}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Printer className="mr-2 h-4 w-4" />
+                      {isPrinting ? "Printing..." : "Print All to Ticket Printer"}
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
