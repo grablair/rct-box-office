@@ -9,7 +9,7 @@ interface BocaPrinterConfig {
 
 // Default configuration for BOCA printer
 const defaultPrinterConfig: BocaPrinterConfig = {
-  printerName: "BOCA_SYSTEMS_46_300_2", // Replace with your actual BOCA printer name
+  printerName: "BOCA_SYSTEMS_46_300", // Replace with your actual BOCA printer name
   width: 5.5, // Width in inches
   height: 2, // Height in inches
   dpi: 300, // BOCA printers typically support 300 DPI

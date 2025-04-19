@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, RefreshCw } from "lucide-react"
+import { Search, RefreshCw, AlertTriangle } from "lucide-react"
 import type { TicketData } from "@/lib/sheets-service"
 
 interface TicketListProps {
@@ -24,16 +24,30 @@ export function TicketList({ tickets, isLoading, error, onTicketSelect, selected
   const [showFilter, setShowFilter] = useState<string>("all")
   const [dateFilter, setDateFilter] = useState<string>("all")
 
-  // Get unique shows and dates for filters
+  // Get unique shows for filters
   const uniqueShows = Array.from(new Set(tickets.map((ticket) => ticket.show)))
-  const uniqueDates = Array.from(
-    new Set(
-      tickets.map((ticket) => {
-        // Extract just the date part from dateTime
-        return ticket.dateTime
-      }),
-    ),
-  )
+
+  // Get unique dates for the selected show only
+  const uniqueDates = useMemo(() => {
+    if (showFilter === "all") return []
+
+    return Array.from(
+      new Set(
+        tickets
+          .filter((ticket) => showFilter === "all" || ticket.show === showFilter)
+          .map((ticket) => {
+            // Extract just the date part from dateTime
+            return ticket.dateTime
+          }),
+      ),
+    )
+  }, [tickets, showFilter])
+
+  // Reset date filter when show filter changes
+  const handleShowFilterChange = (value: string) => {
+    setShowFilter(value)
+    setDateFilter("all") // Reset date filter when show changes
+  }
 
   const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch =
@@ -58,6 +72,12 @@ export function TicketList({ tickets, isLoading, error, onTicketSelect, selected
         t.row === ticket.row &&
         t.seat === ticket.seat,
     )
+  }
+
+  // Check if a ticket needs to be purchased
+  const needsToPurchase = (ticket: TicketData) => {
+    // Check if the ticket has an attendee code and if it's "NEED-TO-BUY"
+    return ticket.attendeeCode === "NEED-TO-BUY"
   }
 
   if (error) {
@@ -89,7 +109,7 @@ export function TicketList({ tickets, isLoading, error, onTicketSelect, selected
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <Select value={showFilter} onValueChange={setShowFilter}>
+          <Select value={showFilter} onValueChange={handleShowFilterChange}>
             <SelectTrigger className="w-full md:w-[180px]">
               <SelectValue placeholder="Filter by show" />
             </SelectTrigger>
@@ -102,19 +122,23 @@ export function TicketList({ tickets, isLoading, error, onTicketSelect, selected
               ))}
             </SelectContent>
           </Select>
-          <Select value={dateFilter} onValueChange={setDateFilter}>
-            <SelectTrigger className="w-full md:w-[180px]">
-              <SelectValue placeholder="Filter by date" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Dates</SelectItem>
-              {uniqueDates.map((date) => (
-                <SelectItem key={date} value={date}>
-                  {date}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+          {/* Only show date filter if a specific show is selected */}
+          {showFilter !== "all" && (
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Filter by date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Dates</SelectItem>
+                {uniqueDates.map((date) => (
+                  <SelectItem key={date} value={date}>
+                    {date}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {isLoading ? (
@@ -145,7 +169,7 @@ export function TicketList({ tickets, isLoading, error, onTicketSelect, selected
                   </TableRow>
                 ) : (
                   filteredTickets.map((ticket, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={index} className={needsToPurchase(ticket) ? "bg-yellow-50" : undefined}>
                       <TableCell>
                         <Checkbox
                           checked={isTicketSelected(ticket)}
@@ -154,14 +178,26 @@ export function TicketList({ tickets, isLoading, error, onTicketSelect, selected
                           }}
                         />
                       </TableCell>
-                      <TableCell>{ticket.name}</TableCell>
+                      <TableCell>
+                        {ticket.name}
+                        {needsToPurchase(ticket) && (
+                          <div className="flex items-center mt-1 text-amber-600 text-xs font-medium">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            Needs to pay
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>{ticket.show}</TableCell>
                       <TableCell>{ticket.dateTime}</TableCell>
                       <TableCell>{ticket.section}</TableCell>
                       <TableCell>{ticket.row}</TableCell>
                       <TableCell>{ticket.seat}</TableCell>
                       <TableCell>
-                        {ticket.isSubscriber ? (
+                        {needsToPurchase(ticket) ? (
+                          <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+                            Unpaid
+                          </Badge>
+                        ) : ticket.isSubscriber ? (
                           <Badge variant="default">Subscriber</Badge>
                         ) : (
                           <Badge variant="outline">Regular</Badge>
